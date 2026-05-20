@@ -1,0 +1,12 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.6
+    command: start-dev --import-realm
+    ports:
+      - "8180:8080"
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD for local Keycloak}
+    volumes:
+      - ./keycloak/quantum-bank-local-realm.json:/opt/keycloak/data/import/quantum-bank-local-realm.json:ro
+    # Later Compose phases may add healthcheck orchestration once gateway and backend services exist.
