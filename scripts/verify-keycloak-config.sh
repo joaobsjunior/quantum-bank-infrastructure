@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-realm_file="keycloak/quantum-bank-local-realm.json"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "${script_dir}/.." && pwd)"
+realm_file="${repo_dir}/keycloak/quantum-bank-local-realm.json"
 
 if [[ ! -f "${realm_file}" ]]; then
   echo "missing ${realm_file}" >&2
