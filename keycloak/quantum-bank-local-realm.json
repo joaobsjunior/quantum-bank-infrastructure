@@ -1,0 +1,139 @@
+{
+  "realm": "quantum-bank-local",
+  "enabled": true,
+  "displayName": "Quantum Bank Local",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "external",
+  "clients": [
+    {
+      "clientId": "quantum-bank-mobile",
+      "name": "Quantum Bank Mobile App",
+      "description": "Public PKCE client for the local v1 mobile app login path.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "quantumbank://oauth2/callback",
+        "http://localhost:8080/oauth2/callback"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "quantum-bank-api-audience"
+      ],
+      "optionalClientScopes": [
+        "pix:write",
+        "statements:read",
+        "profile:read"
+      ]
+    },
+    {
+      "clientId": "quantum-bank-test",
+      "name": "Quantum Bank Local Test Client",
+      "description": "Local test-only client for HTTP and integration tests. Must not appear in mobile config.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "change-me-local-only",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "attributes": {
+        "quantum-bank.local-only": "true"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "quantum-bank-api-audience",
+        "pix:write",
+        "statements:read",
+        "profile:read"
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "quantum-bank-api-audience",
+      "description": "Adds the Quantum Bank API audience to local access tokens.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "quantum-bank-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "quantum-bank-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pix:write",
+      "description": "Allows Pix transfer simulation requests.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "statements:read",
+      "description": "Allows statement retrieval.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "profile:read",
+      "description": "Allows customer registration profile retrieval.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "alice@quantumbank.local",
+      "email": "alice@quantumbank.local",
+      "firstName": "Alice",
+      "lastName": "Quantum",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "change-me-local-only",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
