@@ -10,3 +10,27 @@ services:
     volumes:
       - ./keycloak/quantum-bank-local-realm.json:/opt/keycloak/data/import/quantum-bank-local-realm.json:ro
     # Later Compose phases may add healthcheck orchestration once gateway and backend services exist.
+
+x-phase3-mtls:
+  status: source-level-until-phase-6
+  note: Phase 3 records MTLS-01 and MTLS-02 runtime wiring. Phase 6 owns full Dockerization.
+  listeners:
+    bootstrap:
+      port: ${GATEWAY_BOOTSTRAP_PORT:-8080}
+      config: ${GATEWAY_BOOTSTRAP_CONFIG:-../api-gateway/krakend-bootstrap.json}
+      app_to_gateway_mtls: false
+    banking:
+      port: ${GATEWAY_BANKING_PORT:-8443}
+      config: ${GATEWAY_BANKING_CONFIG:-../api-gateway/krakend-banking.json}
+      app_to_gateway_mtls: true
+      trust_anchor: ${GATEWAY_MOBILE_TRUST_ANCHOR:-../pki/local-ca/trust/issuing-ca.crt}
+  gateway_tls:
+    server_certificate: ${GATEWAY_SERVER_CERT:-../pki/local-ca/runtime/gateway-server.crt}
+    server_private_key: ${GATEWAY_SERVER_KEY:-../pki/local-ca/runtime/gateway-server.key}
+    gateway_client_certificate: ${GATEWAY_CLIENT_CERT:-../pki/local-ca/runtime/gateway-client.crt}
+    gateway_client_private_key: ${GATEWAY_CLIENT_KEY:-../pki/local-ca/runtime/gateway-client.key}
+  backend_tls:
+    port: ${BACKEND_MTLS_PORT:-8080}
+    key_store: ${BACKEND_SERVER_KEY_STORE:-../pki/local-ca/runtime/backend-server.p12}
+    trust_store: ${BACKEND_TRUST_STORE:-../pki/local-ca/runtime/backend-truststore.p12}
+    client-auth: ${BACKEND_SSL_CLIENT_AUTH:-NEED}

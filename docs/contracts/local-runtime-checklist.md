@@ -1,6 +1,6 @@
 # Local Runtime Checklist
 
-Requirements: CONT-01, CONT-02
+Requirements: CONT-01, CONT-02, MTLS-01, MTLS-02
 
 Owner: Quantum Bank Infrastructure
 
@@ -60,13 +60,33 @@ hard-coded secrets or direct mobile-to-backend access.
 
 The local runtime must expose these gateway paths:
 
-- `POST /auth/otk`
-- `POST /auth/csr`
-- `POST /pix/transfers`
-- `GET /statements`
-- `GET /profile`
+- Bootstrap listener `8080`:
+  - `POST /auth/otk`
+  - `POST /auth/csr`
+- Banking listener `8443`:
+  - `POST /pix/transfers`
+  - `GET /statements`
+  - `GET /profile`
 
 The paths must match `api-gateway/openapi/quantum-bank-v1.yaml`.
+
+## Phase 3 mTLS Runtime Wiring
+
+Phase 3 records source-level wiring for local mTLS. Phase 6 owns full
+Dockerized service startup.
+
+- Gateway bootstrap config: `api-gateway/krakend-bootstrap.json` on port `8080`.
+- Gateway banking config: `api-gateway/krakend-banking.json` on port `8443`.
+- App-to-gateway banking trust anchor: `pki/local-ca/trust/issuing-ca.crt`.
+- Gateway client certificate: `GATEWAY_CLIENT_CERT`.
+- Gateway client private key: `GATEWAY_CLIENT_KEY`.
+- Backend server key store: `BACKEND_SERVER_KEY_STORE`.
+- Backend trust store: `BACKEND_TRUST_STORE`.
+- Backend mTLS port: `BACKEND_MTLS_PORT`, local default `8080`.
+- Backend transport client-auth policy: `client-auth=NEED`.
+
+Trust anchors are public PKI artifacts. Private key material and generated
+keystores remain local runtime files and are not committed.
 
 ## Security Failure Checks
 
@@ -80,6 +100,20 @@ Later end-to-end verification must include these security failures:
 
 Each failure must return `application/problem+json` with a stable `errorCode`
 and `correlationId` when the request reaches the app-facing API boundary.
+
+D-27 negative mTLS matrix:
+
+| Case | Boundary | Expected result |
+| --- | --- | --- |
+| missing client cert | app-to-gateway banking listener `8443` | TLS alert or handshake failure |
+| untrusted client cert | app-to-gateway banking listener `8443` | TLS alert or handshake failure |
+| expired client cert | app-to-gateway banking listener `8443` | TLS alert or handshake failure |
+| wrong-environment trust anchor | app-to-gateway banking listener `8443` | TLS alert or handshake failure |
+| direct backend without gateway client certificate | gateway-to-backend mTLS port | TLS alert or handshake failure |
+
+The source script `pki/scripts/negative-mtls-tests.sh` exercises this matrix and
+prints `negative-mtls-ok` only when every case fails closed. If services are not
+running, it exits with a prerequisite message instead of passing.
 
 ## Banking Flow Checks
 
