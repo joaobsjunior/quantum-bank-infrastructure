@@ -53,7 +53,7 @@
       "secret": "change-me-local-only",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "attributes": {
         "quantum-bank.local-only": "true"
@@ -132,6 +132,7 @@
   ],
   "users": [
     {
+      "id": "00000000-0000-0000-0000-000000000001",
       "username": "alice@quantumbank.local",
       "email": "alice@quantumbank.local",
       "firstName": "Alice",

@@ -75,6 +75,8 @@ services:
       KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/token
       KEYCLOAK_TEST_CLIENT_ID: ${KEYCLOAK_TEST_CLIENT_ID:-quantum-bank-test}
       KEYCLOAK_TEST_CLIENT_SECRET: ${KEYCLOAK_TEST_CLIENT_SECRET:-change-me-local-only}
+      KEYCLOAK_SMOKE_USERNAME: ${KEYCLOAK_SMOKE_USERNAME:-alice@quantumbank.local}
+      KEYCLOAK_SMOKE_PASSWORD: ${KEYCLOAK_SMOKE_PASSWORD:-change-me-local-only}
       GATEWAY_BOOTSTRAP_URL: https://gateway-bootstrap:8080
       GATEWAY_BANKING_URL: https://gateway-banking:8443
       BACKEND_DIRECT_URL: https://backend:8080
