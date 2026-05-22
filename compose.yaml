@@ -1,3 +1,5 @@
+name: quantum-bank-local
+
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.6
@@ -9,28 +11,79 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD for local Keycloak}
     volumes:
       - ./keycloak/quantum-bank-local-realm.json:/opt/keycloak/data/import/quantum-bank-local-realm.json:ro
-    # Later Compose phases may add healthcheck orchestration once gateway and backend services exist.
 
-x-phase3-mtls:
-  status: source-level-until-phase-6
-  note: Phase 3 records MTLS-01 and MTLS-02 runtime wiring. Phase 6 owns full Dockerization.
-  listeners:
-    bootstrap:
-      port: ${GATEWAY_BOOTSTRAP_PORT:-8080}
-      config: ${GATEWAY_BOOTSTRAP_CONFIG:-../api-gateway/krakend-bootstrap.json}
-      app_to_gateway_mtls: false
-    banking:
-      port: ${GATEWAY_BANKING_PORT:-8443}
-      config: ${GATEWAY_BANKING_CONFIG:-../api-gateway/krakend-banking.json}
-      app_to_gateway_mtls: true
-      trust_anchor: ${GATEWAY_MOBILE_TRUST_ANCHOR:-../pki/local-ca/trust/issuing-ca.crt}
-  gateway_tls:
-    server_certificate: ${GATEWAY_SERVER_CERT:-../pki/local-ca/runtime/gateway-server.crt}
-    server_private_key: ${GATEWAY_SERVER_KEY:-../pki/local-ca/runtime/gateway-server.key}
-    gateway_client_certificate: ${GATEWAY_CLIENT_CERT:-../pki/local-ca/runtime/gateway-client.crt}
-    gateway_client_private_key: ${GATEWAY_CLIENT_KEY:-../pki/local-ca/runtime/gateway-client.key}
-  backend_tls:
-    port: ${BACKEND_MTLS_PORT:-8080}
-    key_store: ${BACKEND_SERVER_KEY_STORE:-../pki/local-ca/runtime/backend-server.p12}
-    trust_store: ${BACKEND_TRUST_STORE:-../pki/local-ca/runtime/backend-truststore.p12}
-    client-auth: ${BACKEND_SSL_CLIENT_AUTH:-NEED}
+  backend:
+    image: ${BACKEND_IMAGE:-quantum-bank-backend:local}
+    build:
+      context: ../backend
+    depends_on:
+      - keycloak
+    expose:
+      - "8080"
+    environment:
+      QUANTUM_BANK_BACKEND_SSL_ENABLED: "true"
+      QUANTUM_BANK_BACKEND_KEY_STORE: /etc/quantum-bank/runtime/backend-server.p12
+      QUANTUM_BANK_BACKEND_KEY_STORE_PASSWORD: ${BACKEND_SERVER_KEY_STORE_PASSWORD:-changeit}
+      QUANTUM_BANK_BACKEND_TRUST_STORE: /etc/quantum-bank/runtime/backend-truststore.p12
+      QUANTUM_BANK_BACKEND_TRUST_STORE_PASSWORD: ${BACKEND_TRUST_STORE_PASSWORD:-changeit}
+      QUANTUM_BANK_ISSUER_URI: http://keycloak:8080/realms/quantum-bank-local
+      QUANTUM_BANK_JWK_SET_URI: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/certs
+      QUANTUM_BANK_PKI_SIGN_COMMAND: /workspace/pki/scripts/sign-csr.sh
+      QUANTUM_BANK_DATASOURCE_URL: jdbc:h2:mem:quantumbank;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    volumes:
+      - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
+      - ../pki:/workspace/pki:rw
+
+  gateway-bootstrap:
+    image: ${GATEWAY_IMAGE:-quantum-bank-api-gateway:local}
+    build:
+      context: ../api-gateway
+    command: run -c /etc/krakend/krakend-bootstrap.json
+    depends_on:
+      - backend
+      - keycloak
+    ports:
+      - "${GATEWAY_BOOTSTRAP_PORT:-8080}:8080"
+    volumes:
+      - ../pki/local-ca/runtime:/etc/krakend/tls:ro
+      - ../pki/local-ca/trust:/etc/krakend/trust:ro
+
+  gateway-banking:
+    image: ${GATEWAY_IMAGE:-quantum-bank-api-gateway:local}
+    build:
+      context: ../api-gateway
+    command: run -c /etc/krakend/krakend-banking.json
+    depends_on:
+      - backend
+      - keycloak
+    ports:
+      - "${GATEWAY_BANKING_PORT:-8443}:8443"
+    volumes:
+      - ../pki/local-ca/runtime:/etc/krakend/tls:ro
+      - ../pki/local-ca/trust:/etc/krakend/trust:ro
+
+  smoke-tests:
+    image: curlimages/curl:8.16.0
+    profiles:
+      - smoke
+    user: "0:0"
+    depends_on:
+      - gateway-bootstrap
+      - gateway-banking
+      - keycloak
+    environment:
+      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/token
+      KEYCLOAK_TEST_CLIENT_ID: ${KEYCLOAK_TEST_CLIENT_ID:-quantum-bank-test}
+      KEYCLOAK_TEST_CLIENT_SECRET: ${KEYCLOAK_TEST_CLIENT_SECRET:-change-me-local-only}
+      GATEWAY_BOOTSTRAP_URL: https://gateway-bootstrap:8080
+      GATEWAY_BANKING_URL: https://gateway-banking:8443
+      BACKEND_DIRECT_URL: https://backend:8080
+      TRUST_ANCHOR: /etc/quantum-bank/runtime/root-ca.crt
+      MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client.crt
+      MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client.key
+    volumes:
+      - ./scripts/local-e2e-smoke.sh:/scripts/local-e2e-smoke.sh:ro
+      - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
+    entrypoint:
+      - /bin/sh
+      - /scripts/local-e2e-smoke.sh

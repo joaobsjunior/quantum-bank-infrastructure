@@ -21,6 +21,7 @@ required_strings=(
   "pix:write"
   "statements:read"
   "profile:read"
+  "profile:write"
 )
 
 for value in "${required_strings[@]}"; do

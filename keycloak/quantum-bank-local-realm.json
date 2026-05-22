@@ -39,7 +39,8 @@
       "optionalClientScopes": [
         "pix:write",
         "statements:read",
-        "profile:read"
+        "profile:read",
+        "profile:write"
       ]
     },
     {
@@ -64,7 +65,8 @@
         "quantum-bank-api-audience",
         "pix:write",
         "statements:read",
-        "profile:read"
+        "profile:read",
+        "profile:write"
       ]
     }
   ],
@@ -112,6 +114,15 @@
     {
       "name": "profile:read",
       "description": "Allows customer registration profile retrieval.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "profile:write",
+      "description": "Allows customer registration profile editing.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
