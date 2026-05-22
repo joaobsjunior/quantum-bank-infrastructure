@@ -45,6 +45,7 @@ for service in keycloak backend gateway-bootstrap gateway-banking smoke-tests; d
 done
 
 require_string "QUANTUM_BANK_BACKEND_SSL_ENABLED" "${repo_dir}/compose.yaml"
+require_string "KC_HOSTNAME: http://keycloak:8080" "${repo_dir}/compose.yaml"
 require_string "root-ca.crt" "${project_root}/api-gateway/krakend-banking.json"
 require_string "\"input_headers\"" "${project_root}/api-gateway/krakend-banking.json"
 require_string "\"Authorization\"" "${project_root}/api-gateway/krakend-banking.json"

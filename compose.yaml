@@ -9,6 +9,8 @@ services:
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD for local Keycloak}
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_STRICT: "false"
     volumes:
       - ./keycloak/quantum-bank-local-realm.json:/opt/keycloak/data/import/quantum-bank-local-realm.json:ro
 
@@ -29,6 +31,7 @@ services:
       QUANTUM_BANK_ISSUER_URI: http://keycloak:8080/realms/quantum-bank-local
       QUANTUM_BANK_JWK_SET_URI: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/certs
       QUANTUM_BANK_PKI_SIGN_COMMAND: /workspace/pki/scripts/sign-csr.sh
+      QUANTUM_BANK_PKI_ISSUING_CERT: /workspace/pki/local-ca/trust/issuing-ca.crt
       QUANTUM_BANK_DATASOURCE_URL: jdbc:h2:mem:quantumbank;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     volumes:
       - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro

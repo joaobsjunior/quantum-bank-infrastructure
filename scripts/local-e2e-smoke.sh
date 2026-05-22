@@ -149,6 +149,14 @@ expect_tls_failure "direct backend call without gateway client certificate" \
   -H "Authorization: Bearer ${token}" \
   "${backend_direct_url}/statements"
 
+expect_http_status 202 \
+  --cacert "${trust_anchor}" \
+  -H "Authorization: Bearer ${token}" \
+  -H "Content-Type: application/json" \
+  -d '{"appInstanceId":"smoke-app","deviceId":"smoke-device","certificateProfile":"quantum-bank-mobile-client-v1"}' \
+  "${bootstrap_url}/auth/otk"
+expect_body_contains '"otk"'
+
 expect_http_status 422 \
   --cacert "${trust_anchor}" \
   --cert "${client_cert}" \
