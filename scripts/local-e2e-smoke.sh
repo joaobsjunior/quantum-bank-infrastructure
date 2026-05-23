@@ -174,6 +174,7 @@ expect_http_status 200 \
   -H "Authorization: Bearer ${token}" \
   "${banking_url}/statements"
 expect_body_contains '"entries"'
+expect_body_contains '"description":"Local smoke success"'
 
 expect_http_status 200 \
   --cacert "${trust_anchor}" \
