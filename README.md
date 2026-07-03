@@ -52,3 +52,30 @@ OAuth2 and app-to-gateway mTLS.
   it runs in the superproject's opt-in `e2e` job.
 - CI (`.github/workflows/ci.yml`) runs the validation gate on every push/PR to
   `main`.
+
+## Runtime Requirements (full local stack)
+
+`compose.yaml` sets no `deploy.resources` limits, so the numbers below are
+recommendations for running the whole stack locally (`keycloak` + `backend` +
+both KrakenD gateways). The optional `smoke-tests` container is ephemeral.
+
+| Service | Image | Memory (idle → peak) | CPU | Disk |
+| --- | --- | --- | --- | --- |
+| keycloak | keycloak:26.5.6 | ~450 MB → ~900 MB (startup + realm import) | 0.5–2 vCPU | dev mode, in-memory (no volume) |
+| backend | temurin 17-jre | ~400 MB → ~1 GB | 0.5–1 vCPU | in-memory H2 (no DB volume) |
+| gateway-bootstrap | krakend:2.13.4 | ~30–120 MB | 0.25–0.5 vCPU | config + read-only TLS mounts |
+| gateway-banking | krakend:2.13.4 (same image) | ~30–120 MB | 0.25–0.5 vCPU | config + read-only TLS mounts |
+| smoke-tests (opt) | curlimages/curl:8.16.0 | ~10–20 MB (ephemeral) | negligible | script + read-only cert mounts |
+
+**Aggregate to run the stack comfortably:**
+
+- **Memory:** ~2.5–3.5 GB steady; up to ~4 GB during startup and the backend
+  image build. Allocate **≥4 GB** to Docker.
+- **CPU:** **2+ vCPU** (4 speeds up the backend Gradle build and Keycloak boot).
+- **Disk:** images ~1.0–1.3 GB + backend Gradle build cache ~0.5–1.5 GB → keep
+  **≥4 GB free**.
+
+The heaviest one-off cost is the backend image build (a full Gradle `bootJar`
+inside Docker). The KrakenD gateways are the lightest services (small Go
+binaries). `mobile-app` (Flutter client) and `pki` (scripts + local CA mounted
+as volumes) are not Compose services — see their READMEs.
