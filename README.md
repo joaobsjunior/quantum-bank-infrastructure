@@ -41,3 +41,14 @@ docker compose --env-file .env.example --profile smoke run --rm smoke-tests
 The backend is reachable only inside the Compose network. App-facing traffic
 uses KrakenD bootstrap on `8080` and banking on `8443`; banking routes require
 OAuth2 and app-to-gateway mTLS.
+
+## Testing & CI
+
+- Validate infrastructure config locally: `./scripts/ci-validate.sh` runs
+  `terraform fmt -check` + `terraform validate` for aws/gcp/azure (local binary
+  or the `hashicorp/terraform` Docker image) plus the Keycloak and local-e2e
+  config checks.
+- Runtime smoke (`scripts/local-e2e-smoke.sh`) is excluded from the static gate;
+  it runs in the superproject's opt-in `e2e` job.
+- CI (`.github/workflows/ci.yml`) runs the validation gate on every push/PR to
+  `main`.
