@@ -40,7 +40,7 @@ require_executable "${repo_dir}/scripts/verify-keycloak-config.sh"
 "${repo_dir}/scripts/verify-keycloak-config.sh" >/dev/null
 docker compose --env-file "${repo_dir}/.env.example" --profile smoke -f "${repo_dir}/compose.yaml" config >/dev/null
 
-for service in keycloak backend gateway-bootstrap gateway-banking smoke-tests; do
+for service in keycloak backend backend-client gateway-bootstrap gateway-banking smoke-tests; do
   require_string "${service}:" "${repo_dir}/compose.yaml"
 done
 

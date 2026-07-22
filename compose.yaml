@@ -65,6 +65,28 @@ services:
       - ../pki/local-ca/runtime:/etc/krakend/tls:ro
       - ../pki/local-ca/trust:/etc/krakend/trust:ro
 
+  backend-client:
+    image: ${BACKEND_CLIENT_IMAGE:-quantum-bank-backend-client:local}
+    build:
+      context: ../backend-client
+    depends_on:
+      - gateway-banking
+      - keycloak
+    ports:
+      - "${BACKEND_CLIENT_PORT:-8090}:8080"
+    environment:
+      QUANTUM_BANK_CLIENT_GATEWAY_BASE_URL: https://gateway-banking:8443
+      QUANTUM_BANK_CLIENT_TOKEN_URI: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/token
+      QUANTUM_BANK_CLIENT_ID: ${BACKEND_CLIENT_CLIENT_ID:-quantum-bank-backend-client}
+      QUANTUM_BANK_CLIENT_SECRET: ${BACKEND_CLIENT_CLIENT_SECRET:-change-me-local-only}
+      QUANTUM_BANK_CLIENT_SCOPE: ${BACKEND_CLIENT_SCOPE:-pix:write statements:read profile:read}
+      QUANTUM_BANK_CLIENT_KEY_STORE: /etc/quantum-bank/runtime/backend-client.p12
+      QUANTUM_BANK_CLIENT_KEY_STORE_PASSWORD: ${BACKEND_CLIENT_KEY_STORE_PASSWORD:-changeit}
+      QUANTUM_BANK_CLIENT_TRUST_STORE: /etc/quantum-bank/runtime/backend-client-truststore.p12
+      QUANTUM_BANK_CLIENT_TRUST_STORE_PASSWORD: ${BACKEND_CLIENT_TRUST_STORE_PASSWORD:-changeit}
+    volumes:
+      - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
+
   smoke-tests:
     image: curlimages/curl:8.16.0
     profiles:
