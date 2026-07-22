@@ -83,6 +83,28 @@
         "profile:read",
         "profile:write"
       ]
+    },
+    {
+      "clientId": "quantum-bank-backend-client",
+      "name": "Quantum Bank Backend Client (external service)",
+      "description": "Confidential client-credentials client for the external backend-client service. Machine identity, not a device or user.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "change-me-local-only",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "attributes": {
+        "quantum-bank.local-only": "true"
+      },
+      "defaultClientScopes": [
+        "quantum-bank-api-audience",
+        "pix:write",
+        "statements:read",
+        "profile:read"
+      ]
     }
   ],
   "clientScopes": [
