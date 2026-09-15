@@ -1,18 +1,36 @@
 name: quantum-bank-local
 
+# Host port bindings default to the loopback interface so the local runtime is
+# never exposed on the LAN by accident. Set BIND_ADDRESS=0.0.0.0 to reach it from
+# a physical device on the same network.
+
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.6
-    command: start-dev --import-realm
+    # TLS-only local issuer in production mode (dev mode cannot disable HTTP):
+    # tokens, JWKs, and issuer metadata never travel in plaintext, and every
+    # consumer verifies the PKI-issued server certificate. The embedded dev-file
+    # database keeps the local runtime self-contained.
+    command: start --import-realm --https-port=8443
     ports:
-      - "8180:8080"
+      - "${BIND_ADDRESS:-127.0.0.1}:8180:8443"
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD for local Keycloak}
-      KC_HOSTNAME: http://keycloak:8080
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD for local Keycloak}
+      KC_HOSTNAME: https://keycloak:8443
       KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "false"
+      KC_DB: dev-file
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTPS_KEY_STORE_FILE: /etc/quantum-bank/runtime/keycloak-server.p12
+      KC_HTTPS_KEY_STORE_PASSWORD: ${KEYCLOAK_KEY_STORE_PASSWORD:-changeit}
+      KC_HTTPS_PROTOCOLS: TLSv1.3,TLSv1.2
+      QUANTUM_BANK_TEST_CLIENT_SECRET: ${KEYCLOAK_TEST_CLIENT_SECRET:?set KEYCLOAK_TEST_CLIENT_SECRET}
+      QUANTUM_BANK_BACKEND_CLIENT_SECRET: ${BACKEND_CLIENT_CLIENT_SECRET:?set BACKEND_CLIENT_CLIENT_SECRET}
+      QUANTUM_BANK_SMOKE_PASSWORD: ${KEYCLOAK_SMOKE_PASSWORD:?set KEYCLOAK_SMOKE_PASSWORD}
     volumes:
       - ./keycloak/quantum-bank-local-realm.json:/opt/keycloak/data/import/quantum-bank-local-realm.json:ro
+      - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
 
   backend:
     image: ${BACKEND_IMAGE:-quantum-bank-backend:local}
@@ -22,31 +40,51 @@ services:
       - keycloak
     expose:
       - "8080"
+    # Supplementary group that owns pki/local-ca/private on the host so the
+    # non-root backend user can read the issuing key for the local sign script.
+    group_add:
+      - "${PKI_GID:-0}"
     environment:
       QUANTUM_BANK_BACKEND_SSL_ENABLED: "true"
       QUANTUM_BANK_BACKEND_KEY_STORE: /etc/quantum-bank/runtime/backend-server.p12
       QUANTUM_BANK_BACKEND_KEY_STORE_PASSWORD: ${BACKEND_SERVER_KEY_STORE_PASSWORD:-changeit}
       QUANTUM_BANK_BACKEND_TRUST_STORE: /etc/quantum-bank/runtime/backend-truststore.p12
       QUANTUM_BANK_BACKEND_TRUST_STORE_PASSWORD: ${BACKEND_TRUST_STORE_PASSWORD:-changeit}
-      QUANTUM_BANK_ISSUER_URI: http://keycloak:8080/realms/quantum-bank-local
-      QUANTUM_BANK_JWK_SET_URI: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/certs
+      QUANTUM_BANK_ISSUER_URI: https://keycloak:8443/realms/quantum-bank-local
+      QUANTUM_BANK_JWK_SET_URI: https://keycloak:8443/realms/quantum-bank-local/protocol/openid-connect/certs
+      # Outbound TLS (JWK fetch) trusts only the local PKI anchors.
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/etc/quantum-bank/runtime/backend-truststore.p12
+        -Djavax.net.ssl.trustStorePassword=${BACKEND_TRUST_STORE_PASSWORD:-changeit}
+        -Djavax.net.ssl.trustStoreType=PKCS12
+      # Gateway-only transport guard: only KrakenD's client certificate may reach the backend.
+      QUANTUM_BANK_MTLS_ENFORCE_GATEWAY_IDENTITY: "true"
+      QUANTUM_BANK_MTLS_ALLOWED_CLIENT_NAMES: gateway-client
       QUANTUM_BANK_PKI_SIGN_COMMAND: /workspace/pki/scripts/sign-csr.sh
       QUANTUM_BANK_PKI_ISSUING_CERT: /workspace/pki/local-ca/trust/issuing-ca.crt
       QUANTUM_BANK_DATASOURCE_URL: jdbc:h2:mem:quantumbank;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     volumes:
       - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
-      - ../pki:/workspace/pki:rw
+      # Only what the sign script needs, and read-only wherever possible: a
+      # compromised backend cannot alter the scripts, profiles, or CA keys.
+      - ../pki/scripts:/workspace/pki/scripts:ro
+      - ../pki/local-ca/profiles:/workspace/pki/local-ca/profiles:ro
+      - ../pki/local-ca/private:/workspace/pki/local-ca/private:ro
+      - ../pki/local-ca/trust:/workspace/pki/local-ca/trust:ro
 
   gateway-bootstrap:
     image: ${GATEWAY_IMAGE:-quantum-bank-api-gateway:local}
     build:
       context: ../api-gateway
     command: run -c /etc/krakend/krakend-bootstrap.json
+    # KrakenD's entrypoint drops to uid 1000; running it as that uid with the
+    # PKI_GID group lets it read the group-readable runtime keys without root.
+    user: "1000:${PKI_GID:-0}"
     depends_on:
       - backend
       - keycloak
     ports:
-      - "${GATEWAY_BOOTSTRAP_PORT:-8080}:8080"
+      - "${BIND_ADDRESS:-127.0.0.1}:${GATEWAY_BOOTSTRAP_PORT:-8080}:8080"
     volumes:
       - ../pki/local-ca/runtime:/etc/krakend/tls:ro
       - ../pki/local-ca/trust:/etc/krakend/trust:ro
@@ -56,11 +94,14 @@ services:
     build:
       context: ../api-gateway
     command: run -c /etc/krakend/krakend-banking.json
+    # KrakenD's entrypoint drops to uid 1000; running it as that uid with the
+    # PKI_GID group lets it read the group-readable runtime keys without root.
+    user: "1000:${PKI_GID:-0}"
     depends_on:
       - backend
       - keycloak
     ports:
-      - "${GATEWAY_BANKING_PORT:-8443}:8443"
+      - "${BIND_ADDRESS:-127.0.0.1}:${GATEWAY_BANKING_PORT:-8443}:8443"
     volumes:
       - ../pki/local-ca/runtime:/etc/krakend/tls:ro
       - ../pki/local-ca/trust:/etc/krakend/trust:ro
@@ -73,17 +114,19 @@ services:
       - gateway-banking
       - keycloak
     ports:
-      - "${BACKEND_CLIENT_PORT:-8090}:8080"
+      - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_CLIENT_PORT:-8090}:8080"
     environment:
       QUANTUM_BANK_CLIENT_GATEWAY_BASE_URL: https://gateway-banking:8443
-      QUANTUM_BANK_CLIENT_TOKEN_URI: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/token
+      QUANTUM_BANK_CLIENT_TOKEN_URI: https://keycloak:8443/realms/quantum-bank-local/protocol/openid-connect/token
       QUANTUM_BANK_CLIENT_ID: ${BACKEND_CLIENT_CLIENT_ID:-quantum-bank-backend-client}
-      QUANTUM_BANK_CLIENT_SECRET: ${BACKEND_CLIENT_CLIENT_SECRET:-change-me-local-only}
+      QUANTUM_BANK_CLIENT_SECRET: ${BACKEND_CLIENT_CLIENT_SECRET:?set BACKEND_CLIENT_CLIENT_SECRET}
       QUANTUM_BANK_CLIENT_SCOPE: ${BACKEND_CLIENT_SCOPE:-pix:write statements:read profile:read}
       QUANTUM_BANK_CLIENT_KEY_STORE: /etc/quantum-bank/runtime/backend-client.p12
       QUANTUM_BANK_CLIENT_KEY_STORE_PASSWORD: ${BACKEND_CLIENT_KEY_STORE_PASSWORD:-changeit}
       QUANTUM_BANK_CLIENT_TRUST_STORE: /etc/quantum-bank/runtime/backend-client-truststore.p12
       QUANTUM_BANK_CLIENT_TRUST_STORE_PASSWORD: ${BACKEND_CLIENT_TRUST_STORE_PASSWORD:-changeit}
+      QUANTUM_BANK_CONSOLE_USERNAME: ${BACKEND_CLIENT_CONSOLE_USERNAME:?set BACKEND_CLIENT_CONSOLE_USERNAME}
+      QUANTUM_BANK_CONSOLE_PASSWORD: ${BACKEND_CLIENT_CONSOLE_PASSWORD:?set BACKEND_CLIENT_CONSOLE_PASSWORD}
     volumes:
       - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
 
@@ -97,20 +140,48 @@ services:
       - gateway-banking
       - keycloak
     environment:
-      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/token
+      KEYCLOAK_TOKEN_URL: https://keycloak:8443/realms/quantum-bank-local/protocol/openid-connect/token
       KEYCLOAK_TEST_CLIENT_ID: ${KEYCLOAK_TEST_CLIENT_ID:-quantum-bank-test}
-      KEYCLOAK_TEST_CLIENT_SECRET: ${KEYCLOAK_TEST_CLIENT_SECRET:-change-me-local-only}
+      KEYCLOAK_TEST_CLIENT_SECRET: ${KEYCLOAK_TEST_CLIENT_SECRET:?set KEYCLOAK_TEST_CLIENT_SECRET}
       KEYCLOAK_SMOKE_USERNAME: ${KEYCLOAK_SMOKE_USERNAME:-alice@quantumbank.local}
-      KEYCLOAK_SMOKE_PASSWORD: ${KEYCLOAK_SMOKE_PASSWORD:-change-me-local-only}
+      KEYCLOAK_SMOKE_PASSWORD: ${KEYCLOAK_SMOKE_PASSWORD:?set KEYCLOAK_SMOKE_PASSWORD}
+      KEYCLOAK_SMOKE_SUBJECT: ${KEYCLOAK_SMOKE_SUBJECT:-00000000-0000-0000-0000-000000000001}
       GATEWAY_BOOTSTRAP_URL: https://gateway-bootstrap:8080
       GATEWAY_BANKING_URL: https://gateway-banking:8443
       BACKEND_DIRECT_URL: https://backend:8080
       TRUST_ANCHOR: /etc/quantum-bank/runtime/root-ca.crt
       MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client.crt
       MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client.key
+      MOBILE_ENROLL_CSR: /etc/quantum-bank/runtime/mobile-smoke-enroll.csr
     volumes:
       - ./scripts/local-e2e-smoke.sh:/scripts/local-e2e-smoke.sh:ro
       - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
     entrypoint:
       - /bin/sh
       - /scripts/local-e2e-smoke.sh
+
+  negative-mtls-tests:
+    image: curlimages/curl:8.16.0
+    profiles:
+      - smoke
+    user: "0:0"
+    depends_on:
+      - gateway-banking
+      - backend
+    environment:
+      BANKING_URL: https://gateway-banking:8443/statements
+      BACKEND_URL: https://backend:8080/statements
+      GATEWAY_CA_CERT: /etc/quantum-bank/runtime/root-ca.crt
+      BACKEND_CA_CERT: /etc/quantum-bank/runtime/root-ca.crt
+      UNTRUSTED_CLIENT_CERT: /etc/quantum-bank/negative/untrusted-client.crt
+      UNTRUSTED_CLIENT_KEY: /etc/quantum-bank/negative/untrusted-client.key
+      EXPIRED_CLIENT_CERT: /etc/quantum-bank/negative/expired-client.crt
+      EXPIRED_CLIENT_KEY: /etc/quantum-bank/negative/expired-client.key
+      WRONG_ENVIRONMENT_CA_CERT: /etc/quantum-bank/negative/wrong-environment-ca.crt
+    volumes:
+      - ../pki/scripts/negative-mtls-tests.sh:/scripts/negative-mtls-tests.sh:ro
+      - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
+      - ../pki/local-ca/negative:/etc/quantum-bank/negative:ro
+    entrypoint:
+      - /bin/sh
+      - /scripts/negative-mtls-tests.sh

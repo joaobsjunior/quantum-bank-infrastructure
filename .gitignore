@@ -5,3 +5,6 @@
 *.tfplan
 crash.log
 crash.*.log
+
+# Local secrets (copy of .env.example with real values).
+.env

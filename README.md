@@ -21,7 +21,7 @@ Later Compose and deployment work must prove the gateway, backend, PKI, OAuth2 i
 Infrastructure owns the local Keycloak issuer for AUTH-01:
 
 - [OAuth2 Local Issuer Contract](docs/contracts/oauth2-local-issuer.md) defines the `quantum-bank-local` realm, app client, local test client, seed user, issuer URLs, JWKS path, scopes, and audience.
-- [compose.yaml](compose.yaml) starts Keycloak on `http://localhost:8180` so the gateway can keep `http://localhost:8080`.
+- [compose.yaml](compose.yaml) starts Keycloak on `https://localhost:8180` (TLS only, PKI-issued certificate) so the gateway can keep `https://localhost:8080`.
 - [verify-keycloak-config.sh](scripts/verify-keycloak-config.sh) checks the local issuer source config before gateway or backend validation consumes it.
 
 ## Phase 6 Local E2E Runtime
