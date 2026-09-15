@@ -53,8 +53,14 @@ require_string "qos/ratelimit/router" "${project_root}/api-gateway/krakend-boots
 require_string "mobile-smoke-enroll.csr" "${repo_dir}/compose.yaml"
 
 # No plaintext issuer endpoint and no disabled JWK transport security anywhere.
-for forbidden in "http://keycloak:8080" "disable_jwk_security"; do
-  if grep -RIn --exclude-dir=.git --exclude-dir=docs -- "${forbidden}" "${repo_dir}/compose.yaml" "${repo_dir}/scripts" "${project_root}/api-gateway"/*.json "${project_root}/backend/src/main/resources" "${project_root}/backend-client/src/main/resources"; then
+# The patterns are assembled at runtime and this script is excluded from the
+# scan so the check can never match its own source.
+plaintext_issuer="http://keycloak:$((8000 + 80))"
+disabled_jwk="disable_jwk$(printf '_')security"
+for forbidden in "${plaintext_issuer}" "${disabled_jwk}"; do
+  if grep -RIn --exclude-dir=.git --exclude-dir=docs --exclude="$(basename "${BASH_SOURCE[0]}")" -- "${forbidden}" \
+    "${repo_dir}/compose.yaml" "${repo_dir}/scripts" "${project_root}/api-gateway"/*.json \
+    "${project_root}/backend/src/main/resources" "${project_root}/backend-client/src/main/resources"; then
     echo "forbidden plaintext/insecure issuer configuration found: ${forbidden}" >&2
     exit 1
   fi
