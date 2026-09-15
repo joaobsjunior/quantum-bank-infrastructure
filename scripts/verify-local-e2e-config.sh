@@ -40,12 +40,25 @@ require_executable "${repo_dir}/scripts/verify-keycloak-config.sh"
 "${repo_dir}/scripts/verify-keycloak-config.sh" >/dev/null
 docker compose --env-file "${repo_dir}/.env.example" --profile smoke -f "${repo_dir}/compose.yaml" config >/dev/null
 
-for service in keycloak backend backend-client gateway-bootstrap gateway-banking smoke-tests; do
+for service in keycloak backend backend-client gateway-bootstrap gateway-banking smoke-tests negative-mtls-tests; do
   require_string "${service}:" "${repo_dir}/compose.yaml"
 done
 
 require_string "QUANTUM_BANK_BACKEND_SSL_ENABLED" "${repo_dir}/compose.yaml"
-require_string "KC_HOSTNAME: http://keycloak:8080" "${repo_dir}/compose.yaml"
+require_string "KC_HOSTNAME: https://keycloak:8443" "${repo_dir}/compose.yaml"
+require_string "KC_HTTP_ENABLED: \"false\"" "${repo_dir}/compose.yaml"
+require_string "QUANTUM_BANK_MTLS_ENFORCE_GATEWAY_IDENTITY: \"true\"" "${repo_dir}/compose.yaml"
+require_string "jwk_local_ca" "${project_root}/api-gateway/krakend-banking.json"
+require_string "qos/ratelimit/router" "${project_root}/api-gateway/krakend-bootstrap.json"
+require_string "mobile-smoke-enroll.csr" "${repo_dir}/compose.yaml"
+
+# No plaintext issuer endpoint and no disabled JWK transport security anywhere.
+for forbidden in "http://keycloak:8080" "disable_jwk_security"; do
+  if grep -RIn --exclude-dir=.git --exclude-dir=docs -- "${forbidden}" "${repo_dir}/compose.yaml" "${repo_dir}/scripts" "${project_root}/api-gateway"/*.json "${project_root}/backend/src/main/resources" "${project_root}/backend-client/src/main/resources"; then
+    echo "forbidden plaintext/insecure issuer configuration found: ${forbidden}" >&2
+    exit 1
+  fi
+done
 require_string "root-ca.crt" "${project_root}/api-gateway/krakend-banking.json"
 require_string "\"input_headers\"" "${project_root}/api-gateway/krakend-banking.json"
 require_string "\"Authorization\"" "${project_root}/api-gateway/krakend-banking.json"

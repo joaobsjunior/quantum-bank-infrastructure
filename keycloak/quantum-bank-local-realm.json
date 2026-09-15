@@ -6,7 +6,7 @@
   "resetPasswordAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
-  "sslRequired": "external",
+  "sslRequired": "all",
   "clients": [
     {
       "clientId": "quantum-bank-mobile",
@@ -20,15 +20,13 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "quantumbank://oauth2/callback",
-        "http://localhost:8080/oauth2/callback"
+        "quantumbank://oauth2/callback"
       ],
-      "webOrigins": [
-        "+"
-      ],
+      "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "+"
+        "post.logout.redirect.uris": "quantumbank://oauth2/callback",
+        "access.token.lifespan": "300"
       },
       "protocolMappers": [
         {
@@ -47,9 +45,7 @@
         }
       ],
       "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
+        "basic",
         "quantum-bank-api-audience",
         "pix:write",
         "statements:read",
@@ -65,18 +61,17 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "secret": "change-me-local-only",
+      "secret": "${QUANTUM_BANK_TEST_CLIENT_SECRET}",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "attributes": {
-        "quantum-bank.local-only": "true"
+        "quantum-bank.local-only": "true",
+        "access.token.lifespan": "300"
       },
       "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
+        "basic",
         "quantum-bank-api-audience",
         "pix:write",
         "statements:read",
@@ -91,15 +86,17 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "secret": "change-me-local-only",
+      "secret": "${QUANTUM_BANK_BACKEND_CLIENT_SECRET}",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "attributes": {
-        "quantum-bank.local-only": "true"
+        "quantum-bank.local-only": "true",
+        "access.token.lifespan": "300"
       },
       "defaultClientScopes": [
+        "basic",
         "quantum-bank-api-audience",
         "pix:write",
         "statements:read",
@@ -108,6 +105,27 @@
     }
   ],
   "clientScopes": [
+    {
+      "name": "basic",
+      "description": "Adds the stable `sub` claim; the backend accepts no other identity claim.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
     {
       "name": "quantum-bank-api-audience",
       "description": "Adds the Quantum Bank API audience to local access tokens.",
@@ -179,10 +197,27 @@
       "credentials": [
         {
           "type": "password",
-          "value": "change-me-local-only",
+          "value": "${QUANTUM_BANK_SMOKE_PASSWORD}",
           "temporary": false
         }
       ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000000c1",
+      "username": "service-account-quantum-bank-test",
+      "enabled": true,
+      "serviceAccountClientId": "quantum-bank-test"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000000b1",
+      "username": "service-account-quantum-bank-backend-client",
+      "enabled": true,
+      "serviceAccountClientId": "quantum-bank-backend-client"
     }
-  ]
+  ],
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "defaultSignatureAlgorithm": "RS256"
 }

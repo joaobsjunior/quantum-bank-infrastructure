@@ -42,6 +42,20 @@ abort 'quantum-bank-mobile must map preferred_username into access tokens' if pr
 test_client = clients.find { |client| client['clientId'] == 'quantum-bank-test' }
 abort 'missing quantum-bank-test client' if test_client.nil?
 abort 'quantum-bank-test must remain confidential' unless test_client['publicClient'] == false
+
+abort 'realm must require TLS for every request (sslRequired=all)' unless realm['sslRequired'] == 'all'
+abort 'realm must enable brute-force protection' unless realm['bruteForceProtected'] == true
+
+basic_scope = realm.fetch('clientScopes').find { |scope| scope['name'] == 'basic' }
+abort 'missing basic client scope (sub claim)' if basic_scope.nil?
+clients.each do |client|
+  abort "#{client['clientId']} must include the basic scope so tokens carry sub" unless client.fetch('defaultClientScopes').include?('basic')
+  if client['publicClient'] == false && !client.fetch('secret', '').start_with?('${')
+    abort "#{client['clientId']} must take its secret from the environment, not the tracked realm file"
+  end
+end
+abort 'quantum-bank-mobile must not allow wildcard web origins' if mobile.fetch('webOrigins', []).include?('+')
+abort 'quantum-bank-mobile must not allow wildcard post-logout redirects' if mobile.dig('attributes', 'post.logout.redirect.uris') == '+'
 RUBY
 
 required_strings=(

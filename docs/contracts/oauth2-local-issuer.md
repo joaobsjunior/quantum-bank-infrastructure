@@ -16,11 +16,11 @@ Keycloak runs from `infrastructure/compose.yaml` using the imported realm file
 
 Host-facing issuer URL:
 
-- `http://localhost:8180/realms/quantum-bank-local`
+- `https://localhost:8180/realms/quantum-bank-local`
 
 Container-network issuer URL:
 
-- `http://keycloak:8080/realms/quantum-bank-local`
+- `https://keycloak:8443/realms/quantum-bank-local`
 
 JWKS path:
 
@@ -99,14 +99,14 @@ The mobile app must use `quantum-bank-mobile` and Authorization Code + PKCE.
 
 KrakenD validates app-facing JWTs using the container-network issuer and JWKS:
 
-- Issuer: `http://keycloak:8080/realms/quantum-bank-local`
-- JWKS: `http://keycloak:8080/realms/quantum-bank-local/protocol/openid-connect/certs`
+- Issuer: `https://keycloak:8443/realms/quantum-bank-local`
+- JWKS: `https://keycloak:8443/realms/quantum-bank-local/protocol/openid-connect/certs`
 
 Backend validation may use host-facing values in tests and container-network
 values in Compose:
 
-- Issuer: `http://localhost:8180/realms/quantum-bank-local`
-- JWKS: `http://localhost:8180/realms/quantum-bank-local/protocol/openid-connect/certs`
+- Issuer: `https://localhost:8180/realms/quantum-bank-local`
+- JWKS: `https://localhost:8180/realms/quantum-bank-local/protocol/openid-connect/certs`
 
 Both consumers must validate audience `quantum-bank-api`.
 
