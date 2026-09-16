@@ -22,11 +22,13 @@ variable "container_images" {
     backend           = string
     gateway_bootstrap = string
     gateway_banking   = string
+    gateway_tls       = string
   })
   default = {
     backend           = "ghcr.io/joaobsjunior/quantum-bank-backend:latest"
     gateway_bootstrap = "ghcr.io/joaobsjunior/quantum-bank-api-gateway:latest"
     gateway_banking   = "ghcr.io/joaobsjunior/quantum-bank-api-gateway:latest"
+    gateway_tls       = "ghcr.io/joaobsjunior/quantum-bank-api-gateway-tls:latest"
   }
 }
 

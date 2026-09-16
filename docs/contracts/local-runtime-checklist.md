@@ -110,6 +110,9 @@ D-27 negative mTLS matrix:
 | expired client cert | app-to-gateway banking listener `8443` | TLS alert or handshake failure |
 | wrong-environment trust anchor | app-to-gateway banking listener `8443` | TLS alert or handshake failure |
 | direct backend without gateway client certificate | gateway-to-backend mTLS port | TLS alert or handshake failure |
+| classical (RSA) or ML-DSA-44 client cert signed by the real CA | banking listener `8443`, backend mTLS port | TLS alert or handshake failure |
+| classical-only key exchange (X25519 / secp256r1) | every listener | TLS alert or handshake failure |
+| classical-only signature schemes (RSA/ECDSA/EdDSA) | every listener | TLS alert or handshake failure (`pqc-handshake-tests`) |
 
 The source script `pki/scripts/negative-mtls-tests.sh` exercises this matrix and
 prints `negative-mtls-ok` only when every case fails closed. If services are not

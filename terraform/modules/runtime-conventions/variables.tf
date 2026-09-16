@@ -16,6 +16,9 @@ variable "container_images" {
     backend           = string
     gateway_bootstrap = string
     gateway_banking   = string
+    # Post-quantum TLS terminator (HAProxy + OpenSSL 3.5) that owns the public
+    # socket of every internet-facing gateway container.
+    gateway_tls = string
   })
 }
 
@@ -37,4 +40,22 @@ variable "common_tags" {
   description = "Tags or labels common to every cloud path."
   type        = map(string)
   default     = {}
+}
+
+variable "pqc_transport" {
+  description = "Post-quantum TLS policy every network hop must satisfy (documentation and sidecar configuration)."
+  type = object({
+    protocol          = string
+    key_exchange      = string
+    signature_schemes = list(string)
+    ca_algorithm      = string
+    leaf_algorithm    = string
+  })
+  default = {
+    protocol          = "TLSv1.3"
+    key_exchange      = "X25519MLKEM768"
+    signature_schemes = ["mldsa65", "mldsa87"]
+    ca_algorithm      = "ML-DSA-87"
+    leaf_algorithm    = "ML-DSA-65"
+  }
 }

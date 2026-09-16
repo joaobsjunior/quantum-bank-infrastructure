@@ -35,11 +35,20 @@ resource "google_cloud_run_v2_service" "service" {
       max_instance_count = var.max_instances
     }
 
+    # Internet-facing services: the post-quantum TLS terminator sidecar is the
+    # ingress container; KrakenD binds loopback only. NOTE: Cloud Run's managed
+    # ingress terminates TLS at Google's edge with classical certificates, so
+    # this path is post-quantum only behind a TCP passthrough (for example an
+    # internal TCP proxy load balancer to the terminator); see README.
     containers {
       image = each.value.image
 
-      ports {
-        container_port = each.value.port
+      dynamic "ports" {
+        for_each = each.value.internet_facing ? [] : [each.value.port]
+
+        content {
+          container_port = ports.value
+        }
       }
 
       dynamic "env" {
@@ -48,6 +57,20 @@ resource "google_cloud_run_v2_service" "service" {
         content {
           name  = env.key
           value = env.value
+        }
+      }
+    }
+
+    dynamic "containers" {
+      for_each = contains(keys(module.runtime.tls_terminators), each.key) ? [module.runtime.tls_terminators[each.key]] : []
+
+      content {
+        name    = containers.value.name
+        image   = containers.value.image
+        command = containers.value.command
+
+        ports {
+          container_port = containers.value.port
         }
       }
     }

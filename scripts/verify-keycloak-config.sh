@@ -10,53 +10,56 @@ if [[ ! -f "${realm_file}" ]]; then
   exit 1
 fi
 
-ruby -e "require 'json'; JSON.parse(File.read('${realm_file}'))"
-ruby - "${realm_file}" <<'RUBY'
-require 'json'
+python3 - "${realm_file}" <<'PY'
+import json, sys
 
-realm = JSON.parse(File.read(ARGV.fetch(0)))
-clients = realm.fetch('clients')
-mobile = clients.find { |client| client['clientId'] == 'quantum-bank-mobile' }
-abort 'missing quantum-bank-mobile client' if mobile.nil?
-abort 'quantum-bank-mobile must remain a public client' unless mobile['publicClient'] == true
-abort 'quantum-bank-mobile must enable directAccessGrantsEnabled for local simulator login' unless mobile['directAccessGrantsEnabled'] == true
+realm = json.load(open(sys.argv[1]))
+clients = realm["clients"]
+mobile = next((c for c in clients if c.get("clientId") == "quantum-bank-mobile"), None)
+if mobile is None:
+    sys.exit("missing quantum-bank-mobile client")
+if mobile.get("publicClient") is not True:
+    sys.exit("quantum-bank-mobile must remain a public client")
+if mobile.get("directAccessGrantsEnabled") is not True:
+    sys.exit("quantum-bank-mobile must enable directAccessGrantsEnabled for local simulator login")
 
-required_default_scopes = %w[
-  quantum-bank-api-audience
-  pix:write
-  statements:read
-  profile:read
-  profile:write
-]
-default_scopes = mobile.fetch('defaultClientScopes')
-missing = required_default_scopes - default_scopes
-abort "quantum-bank-mobile missing default scopes: #{missing.join(', ')}" unless missing.empty?
+required_default_scopes = ["quantum-bank-api-audience", "pix:write", "statements:read", "profile:read", "profile:write"]
+default_scopes = mobile["defaultClientScopes"]
+missing = [s for s in required_default_scopes if s not in default_scopes]
+if missing:
+    sys.exit("quantum-bank-mobile missing default scopes: " + ", ".join(missing))
 
-preferred_username_mapper = mobile.fetch('protocolMappers', []).find do |mapper|
-  mapper['protocolMapper'] == 'oidc-usermodel-property-mapper' &&
-    mapper.dig('config', 'claim.name') == 'preferred_username' &&
-    mapper.dig('config', 'access.token.claim') == 'true'
-end
-abort 'quantum-bank-mobile must map preferred_username into access tokens' if preferred_username_mapper.nil?
+preferred_username_mapper = next((m for m in mobile.get("protocolMappers", [])
+    if m.get("protocolMapper") == "oidc-usermodel-property-mapper"
+    and m.get("config", {}).get("claim.name") == "preferred_username"
+    and m.get("config", {}).get("access.token.claim") == "true"), None)
+if preferred_username_mapper is None:
+    sys.exit("quantum-bank-mobile must map preferred_username into access tokens")
 
-test_client = clients.find { |client| client['clientId'] == 'quantum-bank-test' }
-abort 'missing quantum-bank-test client' if test_client.nil?
-abort 'quantum-bank-test must remain confidential' unless test_client['publicClient'] == false
+test_client = next((c for c in clients if c.get("clientId") == "quantum-bank-test"), None)
+if test_client is None:
+    sys.exit("missing quantum-bank-test client")
+if test_client.get("publicClient") is not False:
+    sys.exit("quantum-bank-test must remain confidential")
 
-abort 'realm must require TLS for every request (sslRequired=all)' unless realm['sslRequired'] == 'all'
-abort 'realm must enable brute-force protection' unless realm['bruteForceProtected'] == true
+if realm.get("sslRequired") != "all":
+    sys.exit("realm must require TLS for every request (sslRequired=all)")
+if realm.get("bruteForceProtected") is not True:
+    sys.exit("realm must enable brute-force protection")
 
-basic_scope = realm.fetch('clientScopes').find { |scope| scope['name'] == 'basic' }
-abort 'missing basic client scope (sub claim)' if basic_scope.nil?
-clients.each do |client|
-  abort "#{client['clientId']} must include the basic scope so tokens carry sub" unless client.fetch('defaultClientScopes').include?('basic')
-  if client['publicClient'] == false && !client.fetch('secret', '').start_with?('${')
-    abort "#{client['clientId']} must take its secret from the environment, not the tracked realm file"
-  end
-end
-abort 'quantum-bank-mobile must not allow wildcard web origins' if mobile.fetch('webOrigins', []).include?('+')
-abort 'quantum-bank-mobile must not allow wildcard post-logout redirects' if mobile.dig('attributes', 'post.logout.redirect.uris') == '+'
-RUBY
+basic_scope = next((s for s in realm["clientScopes"] if s.get("name") == "basic"), None)
+if basic_scope is None:
+    sys.exit("missing basic client scope (sub claim)")
+for client in clients:
+    if "basic" not in client["defaultClientScopes"]:
+        sys.exit(f"{client['clientId']} must include the basic scope so tokens carry sub")
+    if client.get("publicClient") is False and not client.get("secret", "").startswith("${"):
+        sys.exit(f"{client['clientId']} must take its secret from the environment, not the tracked realm file")
+if "+" in mobile.get("webOrigins", []):
+    sys.exit("quantum-bank-mobile must not allow wildcard web origins")
+if mobile.get("attributes", {}).get("post.logout.redirect.uris") == "+":
+    sys.exit("quantum-bank-mobile must not allow wildcard post-logout redirects")
+PY
 
 required_strings=(
   "quantum-bank-local"

@@ -41,3 +41,22 @@ environment, and Container Apps.
 mTLS trust material and OAuth2 secrets are intentionally modeled as inputs.
 Production state backends, DNS, managed certificates, and secret-manager wiring
 belong to environment-specific overlays.
+
+## Post-Quantum Transport
+
+Every internet-facing gateway service is deployed with the post-quantum TLS
+terminator sidecar (`container_images.gateway_tls`, HAProxy + OpenSSL 3.5) in
+the same task/pod network namespace; KrakenD binds loopback only. The
+`runtime-conventions` module exposes the `tls_terminators` descriptors and the
+`pqc_transport` policy (TLS 1.3, `X25519MLKEM768`, `mldsa65`/`mldsa87`,
+ML-DSA-87 CA, ML-DSA-65 leaves).
+
+The deployment stays post-quantum only if the cloud ingress passes TLS
+through to the sidecar instead of terminating it at the provider edge (no
+provider today presents ML-DSA certificates):
+
+| Path | Ingress | Status |
+| --- | --- | --- |
+| AWS ECS/Fargate | Task ENI, sidecar publishes the port | Post-quantum end to end (add an NLB in TCP passthrough mode when fronting with a load balancer) |
+| Azure Container Apps | `transport = "tcp"` ingress to the sidecar | Post-quantum end to end; client certificates are verified by the sidecar |
+| GCP Cloud Run v2 | Managed HTTPS ingress terminates TLS at Google's edge | Requires a TCP passthrough (internal TCP proxy / GKE) in front of the sidecar to be post-quantum; documented limitation |

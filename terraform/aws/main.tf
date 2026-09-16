@@ -56,34 +56,63 @@ resource "aws_ecs_task_definition" "service" {
   memory                   = tostring(var.task_memory)
   execution_role_arn       = aws_iam_role.task_execution.arn
 
-  container_definitions = jsonencode([
-    {
-      name      = each.value.name
-      image     = each.value.image
-      essential = true
-      portMappings = [
-        {
-          containerPort = each.value.port
-          hostPort      = each.value.port
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        for name, value in var.runtime_environment : {
-          name  = name
-          value = value
-        }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.service[each.key].name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = each.value.name
+  # awsvpc mode gives every container of the task the same network namespace,
+  # so the post-quantum TLS terminator sidecar owns the published port and the
+  # KrakenD container binds loopback only. Internal services (backend) run
+  # BCJSSE in-process and publish their own port.
+  container_definitions = jsonencode(concat(
+    [
+      {
+        name      = each.value.name
+        image     = each.value.image
+        essential = true
+        portMappings = each.value.internet_facing ? [] : [
+          {
+            containerPort = each.value.port
+            hostPort      = each.value.port
+            protocol      = "tcp"
+          }
+        ]
+        environment = [
+          for name, value in var.runtime_environment : {
+            name  = name
+            value = value
+          }
+        ]
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = aws_cloudwatch_log_group.service[each.key].name
+            awslogs-region        = var.aws_region
+            awslogs-stream-prefix = each.value.name
+          }
         }
       }
-    }
-  ])
+    ],
+    [
+      for terminator in(contains(keys(module.runtime.tls_terminators), each.key) ? [module.runtime.tls_terminators[each.key]] : []) : {
+        name      = terminator.name
+        image     = terminator.image
+        essential = true
+        command   = terminator.command
+        portMappings = [
+          {
+            containerPort = terminator.port
+            hostPort      = terminator.port
+            protocol      = "tcp"
+          }
+        ]
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = aws_cloudwatch_log_group.service[each.key].name
+            awslogs-region        = var.aws_region
+            awslogs-stream-prefix = terminator.name
+          }
+        }
+      }
+    ],
+  ))
 
   tags = module.runtime.tags
 }
