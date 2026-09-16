@@ -86,9 +86,12 @@ require_string "http-request set-header X-Forwarded-Proto https" "${keycloak_tls
 require_string "server keycloak 127.0.0.1:8080" "${keycloak_tls}"
 
 # No plaintext issuer endpoint, no JVM-terminated issuer TLS (Keycloak cannot
-# do ML-DSA) and no KrakenD-side trust anchors anywhere.
+# do ML-DSA) and no KrakenD-side trust anchors anywhere. This script is
+# excluded from the scan so the check can never match its own source.
 for forbidden in "http://keycloak:8080" "KC_HTTPS_" "jwk_local_ca"; do
-  if grep -RIn --exclude-dir=.git --exclude-dir=docs --exclude=verify-local-e2e-config.sh -- "${forbidden}" "${repo_dir}/compose.yaml" "${repo_dir}/scripts" "${project_root}/api-gateway"/*.json "${project_root}/backend/src/main/resources" "${project_root}/backend-client/src/main/resources"; then
+  if grep -RIn --exclude-dir=.git --exclude-dir=docs --exclude="$(basename "${BASH_SOURCE[0]}")" -- "${forbidden}" \
+    "${repo_dir}/compose.yaml" "${repo_dir}/scripts" "${project_root}/api-gateway"/*.json \
+    "${project_root}/backend/src/main/resources" "${project_root}/backend-client/src/main/resources"; then
     echo "forbidden plaintext/classical issuer configuration found: ${forbidden}" >&2
     exit 1
   fi
