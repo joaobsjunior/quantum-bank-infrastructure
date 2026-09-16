@@ -44,4 +44,19 @@ locals {
       healthcheck_path = "/__health"
     }
   }
+
+  # Post-quantum TLS terminator paired with every internet-facing service. It
+  # shares the service's network namespace (task/pod), owns the published port
+  # with the PKI-issued ML-DSA-65 certificate and X25519MLKEM768, and the paired
+  # KrakenD process listens on loopback only. The cloud ingress in front of it
+  # must pass TLS through (no provider-edge termination) to stay post-quantum.
+  tls_terminators = {
+    for key, service in local.services : key => {
+      name    = "${service.name}-tls"
+      image   = var.container_images.gateway_tls
+      port    = service.port
+      command = ["haproxy", "-f", "/usr/local/etc/haproxy/haproxy-${replace(service.name, "gateway-", "")}.cfg"]
+      policy  = var.pqc_transport
+    } if service.internet_facing
+  }
 }

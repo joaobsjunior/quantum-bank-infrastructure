@@ -24,6 +24,22 @@ Infrastructure owns the local Keycloak issuer for AUTH-01:
 - [compose.yaml](compose.yaml) starts Keycloak on `https://localhost:8180` (TLS only, PKI-issued certificate) so the gateway can keep `https://localhost:8080`.
 - [verify-keycloak-config.sh](scripts/verify-keycloak-config.sh) checks the local issuer source config before gateway or backend validation consumes it.
 
+## Post-Quantum Transport Topology
+
+Every socket that crosses a container or host boundary is TLS 1.3 with ML-DSA
+authentication (PKI-issued ML-DSA-65 certificates under an ML-DSA-87 CA) and
+`X25519MLKEM768` key exchange:
+
+| Service | How it speaks post-quantum |
+| --- | --- |
+| `keycloak` + `keycloak-tls` | Keycloak listens on `127.0.0.1:8080` (HTTP, `--proxy-headers xforwarded`); the HAProxy sidecar in the same network namespace owns `:8443` |
+| `gateway-bootstrap` + `gateway-bootstrap-tls`, `gateway-banking` + `gateway-banking-tls` | KrakenD binds loopback only; HAProxy publishes `8080`/`8443`, enforces app mTLS on `8443`, and carries the gateway's ML-DSA identity to the backend |
+| `backend`, `backend-client` | BouncyCastle BCJSSE in-process (TLS 1.3, `mldsa65:mldsa87`, `X25519MLKEM768`) |
+| `smoke-tests`, `negative-mtls-tests` | curl 8.16 (OpenSSL 3.5) exercising the mobile and gateway roles |
+| `pqc-handshake-tests` | `alpine/openssl:3.5.8` proving the negotiated group and peer signature on every hop, and that classical-only clients are refused |
+
+`scripts/verify-local-e2e-config.sh` enforces this topology statically.
+
 ## Phase 6 Local E2E Runtime
 
 Phase 6 expands [compose.yaml](compose.yaml) into the local end-to-end runtime:
@@ -36,6 +52,8 @@ before starting Compose:
 docker compose --env-file .env.example build
 docker compose --env-file .env.example up -d keycloak backend gateway-bootstrap gateway-banking
 docker compose --env-file .env.example --profile smoke run --rm smoke-tests
+docker compose --env-file .env.example --profile smoke run --rm negative-mtls-tests
+docker compose --env-file .env.example --profile smoke run --rm pqc-handshake-tests
 ```
 
 The backend is reachable only inside the Compose network. App-facing traffic
@@ -70,7 +88,8 @@ recommended configuration to run the whole stack locally.
 
 | Service | Memory | CPU | Notes |
 | --- | --- | --- | --- |
-| keycloak | **~1 GB** | **1 vCPU** | OAuth2 issuer, dev mode (no volume) |
+| keycloak | **~1 GB** | **1 vCPU** | OAuth2 issuer, production mode on loopback HTTP (no volume) |
+| keycloak-tls, gateway-*-tls | **~32 MB** each | negligible | HAProxy post-quantum terminators |
 | backend | **~1 GB** | **1 vCPU** | JVM + in-memory H2 (no DB volume) |
 | gateway-bootstrap | **~256 MB** | **0.5 vCPU** | KrakenD on `8080` |
 | gateway-banking | **~256 MB** | **0.5 vCPU** | KrakenD on `8443` (same image) |

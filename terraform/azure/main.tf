@@ -62,16 +62,34 @@ resource "azurerm_container_app" "service" {
         }
       }
     }
+
+    # Post-quantum TLS terminator sidecar for internet-facing services; the
+    # KrakenD container binds loopback only.
+    dynamic "container" {
+      for_each = contains(keys(module.runtime.tls_terminators), each.key) ? [module.runtime.tls_terminators[each.key]] : []
+
+      content {
+        name    = container.value.name
+        image   = container.value.image
+        cpu     = var.container_cpu
+        memory  = var.container_memory
+        command = container.value.command
+      }
+    }
   }
 
   dynamic "ingress" {
     for_each = each.value.internet_facing ? [each.value] : []
 
+    # TCP transport passes the TLS stream through to the post-quantum
+    # terminator sidecar; the platform edge must not terminate TLS (it cannot
+    # present ML-DSA certificates), so client certificates are verified by the
+    # terminator, not by the platform.
     content {
       external_enabled           = true
       target_port                = ingress.value.port
-      transport                  = "auto"
-      client_certificate_mode    = ingress.value.requires_mtls ? "require" : "ignore"
+      exposed_port               = ingress.value.port
+      transport                  = "tcp"
       allow_insecure_connections = false
 
       traffic_weight {

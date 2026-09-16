@@ -119,3 +119,13 @@ Phase 2 does not implement:
 - Real customer identity lifecycle.
 - mTLS certificate issuance.
 - Profile editing with `profile:write`.
+
+## Post-Quantum Terminator
+
+Keycloak cannot present ML-DSA certificates (JDK 21 JSSE), so it runs on
+`127.0.0.1:8080` in production mode with `--proxy-headers xforwarded`, and the
+`keycloak-tls` HAProxy sidecar in the same network namespace owns
+`https://keycloak:8443` with the PKI-issued ML-DSA-65 certificate, TLS 1.3,
+`X25519MLKEM768` and `mldsa65:mldsa87` only. Tokens, JWKs and issuer metadata
+therefore never cross a container or host boundary outside a post-quantum TLS
+session; the loopback hop never leaves the namespace.
