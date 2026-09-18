@@ -43,19 +43,27 @@ variable "common_tags" {
 }
 
 variable "pqc_transport" {
-  description = "Post-quantum TLS policy every network hop must satisfy (documentation and sidecar configuration)."
+  description = "TLS policy every network hop must satisfy (documentation and sidecar configuration). Strict hops use the post-quantum values only; app-facing listeners additionally serve the compatibility chain and accept the compatibility group/schemes for peers whose TLS stack cannot verify ML-DSA yet."
   type = object({
-    protocol          = string
-    key_exchange      = string
-    signature_schemes = list(string)
-    ca_algorithm      = string
-    leaf_algorithm    = string
+    protocol                 = string
+    key_exchange             = string
+    signature_schemes        = list(string)
+    ca_algorithm             = string
+    leaf_algorithm           = string
+    compat_key_exchange      = list(string)
+    compat_signature_schemes = list(string)
+    compat_ca_algorithm      = string
+    compat_leaf_algorithm    = string
   })
   default = {
-    protocol          = "TLSv1.3"
-    key_exchange      = "X25519MLKEM768"
-    signature_schemes = ["mldsa65", "mldsa87"]
-    ca_algorithm      = "ML-DSA-87"
-    leaf_algorithm    = "ML-DSA-65"
+    protocol                 = "TLSv1.3"
+    key_exchange             = "X25519MLKEM768"
+    signature_schemes        = ["mldsa65", "mldsa87"]
+    ca_algorithm             = "ML-DSA-87"
+    leaf_algorithm           = "ML-DSA-65"
+    compat_key_exchange      = ["X25519MLKEM768", "X25519"]
+    compat_signature_schemes = ["mldsa65", "mldsa87", "ecdsa_secp256r1_sha256", "ecdsa_secp384r1_sha384"]
+    compat_ca_algorithm      = "ECDSA-P384"
+    compat_leaf_algorithm    = "ECDSA-P256"
   }
 }

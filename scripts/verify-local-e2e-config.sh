@@ -69,21 +69,33 @@ require_string "pqc-handshake-tests.sh" "${repo_dir}/compose.yaml"
 require_string "QUANTUM_BANK_MTLS_ENFORCE_GATEWAY_IDENTITY: \"true\"" "${repo_dir}/compose.yaml"
 require_string "qos/ratelimit/router" "${project_root}/api-gateway/krakend-bootstrap.json"
 require_string "mobile-smoke-enroll.csr" "${repo_dir}/compose.yaml"
+require_string "mobile-smoke-enroll-compat.csr" "${repo_dir}/compose.yaml"
 require_string "mobile-smoke-client.crt" "${repo_dir}/compose.yaml"
+require_string "mobile-smoke-client-compat.crt" "${repo_dir}/compose.yaml"
+require_string "trust-anchors.crt" "${repo_dir}/compose.yaml"
+require_string "root-ca-compat.crt" "${repo_dir}/compose.yaml"
 require_string "classical-client.crt" "${repo_dir}/compose.yaml"
 require_string "mldsa44-client.crt" "${repo_dir}/compose.yaml"
+require_string "untrusted-compat-client.crt" "${repo_dir}/compose.yaml"
 require_string "BACKEND_DIRECT_URL" "${repo_dir}/scripts/local-e2e-smoke.sh"
+require_string "COMPAT_MOBILE_ENROLL_CSR" "${repo_dir}/scripts/local-e2e-smoke.sh"
 
-# The issuer terminator: ML-DSA certificate, hybrid ML-KEM group, ML-DSA-only
-# signature schemes, TLS 1.3 only, and forwarded-proto so Keycloak keeps
-# sslRequired=all satisfied behind the loopback hop.
+# The issuer terminator is an app-facing dual-identity listener: the ECDSA
+# compatibility certificate first (no-SNI default) and the ML-DSA certificate
+# second, hybrid ML-KEM group preferred with X25519 accepted, ML-DSA and ECDSA
+# signature schemes only (never RSA), TLS 1.3 only, and forwarded-proto so
+# Keycloak keeps sslRequired=all satisfied behind the loopback hop.
 keycloak_tls="${repo_dir}/keycloak/haproxy-keycloak.cfg"
-require_string "bind :8443 ssl crt /etc/quantum-bank/tls/keycloak-server.pem" "${keycloak_tls}"
+require_string "bind :8443 ssl crt /etc/quantum-bank/tls/keycloak-server-compat.pem crt /etc/quantum-bank/tls/keycloak-server.pem" "${keycloak_tls}"
 require_string "ssl-default-bind-options ssl-min-ver TLSv1.3 ssl-max-ver TLSv1.3" "${keycloak_tls}"
-require_string "ssl-default-bind-curves X25519MLKEM768" "${keycloak_tls}"
-require_string "ssl-default-bind-sigalgs mldsa65:mldsa87" "${keycloak_tls}"
+require_string "ssl-default-bind-curves X25519MLKEM768:X25519" "${keycloak_tls}"
+require_string "ssl-default-bind-sigalgs mldsa65:mldsa87:ecdsa_secp256r1_sha256:ecdsa_secp384r1_sha384" "${keycloak_tls}"
 require_string "http-request set-header X-Forwarded-Proto https" "${keycloak_tls}"
 require_string "server keycloak 127.0.0.1:8080" "${keycloak_tls}"
+if grep -Eq 'rsa_|ed25519|verify (none|optional)|crt-ignore-err' "${keycloak_tls}"; then
+  echo "forbidden TLS setting in ${keycloak_tls}" >&2
+  exit 1
+fi
 
 # No plaintext issuer endpoint, no JVM-terminated issuer TLS (Keycloak cannot
 # do ML-DSA) and no KrakenD-side trust anchors anywhere. This script is

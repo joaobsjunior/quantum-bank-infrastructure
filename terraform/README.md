@@ -42,18 +42,23 @@ mTLS trust material and OAuth2 secrets are intentionally modeled as inputs.
 Production state backends, DNS, managed certificates, and secret-manager wiring
 belong to environment-specific overlays.
 
-## Post-Quantum Transport
+## Transport Policy
 
-Every internet-facing gateway service is deployed with the post-quantum TLS
-terminator sidecar (`container_images.gateway_tls`, HAProxy + OpenSSL 3.5) in
-the same task/pod network namespace; KrakenD binds loopback only. The
+Every internet-facing gateway service is deployed with the TLS terminator
+sidecar (`container_images.gateway_tls`, HAProxy + OpenSSL 3.5) in the same
+task/pod network namespace; KrakenD binds loopback only. The
 `runtime-conventions` module exposes the `tls_terminators` descriptors and the
-`pqc_transport` policy (TLS 1.3, `X25519MLKEM768`, `mldsa65`/`mldsa87`,
-ML-DSA-87 CA, ML-DSA-65 leaves).
+`pqc_transport` policy: strict values for every service hop (TLS 1.3,
+`X25519MLKEM768`, `mldsa65`/`mldsa87`, ML-DSA-87 CA, ML-DSA-65 leaves) and
+`compat_*` values the app-facing listeners additionally serve and accept
+(ECDSA P-256 identity under an ECDSA P-384 CA, `X25519` fallback group, ECDSA
+signature schemes) for peers whose TLS stack cannot verify ML-DSA yet.
 
-The deployment stays post-quantum only if the cloud ingress passes TLS
-through to the sidecar instead of terminating it at the provider edge (no
-provider today presents ML-DSA certificates):
+The hybrid key exchange and the PKI identities only reach the client if the
+cloud ingress passes TLS through to the sidecar instead of terminating it at
+the provider edge (no provider today presents ML-DSA certificates, and a
+provider-terminated edge would also strip the mutual TLS the banking listener
+enforces):
 
 | Path | Ingress | Status |
 | --- | --- | --- |
