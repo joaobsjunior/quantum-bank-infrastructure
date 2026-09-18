@@ -45,11 +45,14 @@ locals {
     }
   }
 
-  # Post-quantum TLS terminator paired with every internet-facing service. It
-  # shares the service's network namespace (task/pod), owns the published port
-  # with the PKI-issued ML-DSA-65 certificate and X25519MLKEM768, and the paired
-  # KrakenD process listens on loopback only. The cloud ingress in front of it
-  # must pass TLS through (no provider-edge termination) to stay post-quantum.
+  # TLS terminator paired with every internet-facing service. It shares the
+  # service's network namespace (task/pod), owns the published port as an
+  # app-facing dual-identity listener (PKI-issued ML-DSA-65 certificate for
+  # post-quantum peers, ECDSA P-256 compatibility certificate otherwise;
+  # X25519MLKEM768 preferred, X25519 accepted) and keeps its egress strict; the
+  # paired KrakenD process listens on loopback only. The cloud ingress in front
+  # of it must pass TLS through (no provider-edge termination) so the hybrid
+  # key exchange and the PKI identities reach the client.
   tls_terminators = {
     for key, service in local.services : key => {
       name    = "${service.name}-tls"

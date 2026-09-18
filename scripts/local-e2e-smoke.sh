@@ -10,10 +10,18 @@ smoke_subject="${KEYCLOAK_SMOKE_SUBJECT:-00000000-0000-0000-0000-000000000001}"
 bootstrap_url="${GATEWAY_BOOTSTRAP_URL:-https://gateway-bootstrap:8080}"
 banking_url="${GATEWAY_BANKING_URL:-https://gateway-banking:8443}"
 backend_direct_url="${BACKEND_DIRECT_URL:-https://backend:8080}"
-trust_anchor="${TRUST_ANCHOR:-/etc/quantum-bank/runtime/root-ca.crt}"
+# curl offers ECDSA schemes, so the app-facing listeners serve it their ECDSA
+# compatibility identity (the same the Dart mobile transport sees); it is
+# verified against the union of both PKI root anchors. The strict backend port
+# only ever presents the ML-DSA identity.
+trust_anchor="${TRUST_ANCHOR:-/etc/quantum-bank/runtime/trust-anchors.crt}"
+backend_trust_anchor="${BACKEND_TRUST_ANCHOR:-/etc/quantum-bank/runtime/root-ca.crt}"
 client_cert="${MOBILE_CLIENT_CERT:-/etc/quantum-bank/runtime/mobile-smoke-client.crt}"
 client_key="${MOBILE_CLIENT_KEY:-/etc/quantum-bank/runtime/mobile-smoke-client.key}"
+compat_client_cert="${COMPAT_MOBILE_CLIENT_CERT:-/etc/quantum-bank/runtime/mobile-smoke-client-compat.crt}"
+compat_client_key="${COMPAT_MOBILE_CLIENT_KEY:-/etc/quantum-bank/runtime/mobile-smoke-client-compat.key}"
 enroll_csr="${MOBILE_ENROLL_CSR:-/etc/quantum-bank/runtime/mobile-smoke-enroll.csr}"
+compat_enroll_csr="${COMPAT_MOBILE_ENROLL_CSR:-/etc/quantum-bank/runtime/mobile-smoke-enroll-compat.csr}"
 body_file="/tmp/quantum-bank-smoke-body"
 
 fail() {
@@ -132,7 +140,8 @@ json_escape_file() {
   awk 'BEGIN { ORS = "" } { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); print $0 "\\n" }' "$1"
 }
 
-for fixture in "${trust_anchor}" "${client_cert}" "${client_key}" "${enroll_csr}"; do
+for fixture in "${trust_anchor}" "${backend_trust_anchor}" "${client_cert}" "${client_key}" "${enroll_csr}" \
+  "${compat_client_cert}" "${compat_client_key}" "${compat_enroll_csr}"; do
   if [ ! -f "${fixture}" ]; then
     fail "missing smoke fixture ${fixture}; run pki/scripts/bootstrap-runtime-certs.sh first"
   fi
@@ -208,19 +217,48 @@ expect_body_contains '"errorCode":"request_invalid"'
 expect_tls_failure "direct backend call without gateway client certificate" \
   --connect-timeout 5 \
   --max-time 10 \
-  --cacert "${trust_anchor}" \
+  --cacert "${backend_trust_anchor}" \
   -H "Authorization: Bearer ${token}" \
   "${backend_direct_url}/statements"
 
 # Gateway-only guard: a valid PKI-issued certificate that is not the gateway's
 # own identity is rejected by the backend even with a valid token.
 expect_http_status 403 \
-  --cacert "${trust_anchor}" \
+  --cacert "${backend_trust_anchor}" \
   --cert "${client_cert}" \
   --key "${client_key}" \
   -H "Authorization: Bearer ${token}" \
   "${backend_direct_url}/statements"
 expect_body_contains '"errorCode":"mtls_client_not_allowed"'
+
+# The compatibility chain never authenticates the strict backend hop.
+expect_tls_failure "direct backend call with ECDSA compatibility client certificate" \
+  --connect-timeout 5 \
+  --max-time 10 \
+  --cacert "${backend_trust_anchor}" \
+  --cert "${compat_client_cert}" \
+  --key "${compat_client_key}" \
+  -H "Authorization: Bearer ${token}" \
+  "${backend_direct_url}/statements"
+
+# Compatibility mobile role: the ECDSA P-256 device certificate is accepted by
+# the banking listener, including for a client that only offers the classical
+# X25519 group (what a TLS stack without ML-KEM negotiates).
+expect_http_status 200 \
+  --cacert "${trust_anchor}" \
+  --cert "${compat_client_cert}" \
+  --key "${compat_client_key}" \
+  -H "Authorization: Bearer ${token}" \
+  "${banking_url}/statements"
+expect_body_contains '"entries"'
+expect_http_status 200 \
+  --cacert "${trust_anchor}" \
+  --cert "${compat_client_cert}" \
+  --key "${compat_client_key}" \
+  --curves X25519 \
+  -H "Authorization: Bearer ${token}" \
+  "${banking_url}/profile"
+expect_body_contains "\"subject\":\"${smoke_subject}\""
 
 # Bootstrap: OTK issuance then CSR enrollment with a real CSR bound to the
 # authenticated subject.
@@ -244,6 +282,29 @@ expect_http_status 202 \
   --data-binary @/tmp/quantum-bank-smoke-csr.json \
   "${bootstrap_url}/auth/csr"
 expect_body_contains '"certificate":"-----BEGIN CERTIFICATE-----'
+expect_body_not_contains 'PRIVATE KEY'
+
+# Compatibility enrollment: an ECDSA P-256 CSR is issued under the ECDSA
+# compatibility chain (a fresh OTK is required, the previous one is consumed).
+expect_http_status 202 \
+  --cacert "${trust_anchor}" \
+  -H "Authorization: Bearer ${token}" \
+  -H "Content-Type: application/json" \
+  -d '{"appInstanceId":"smoke-app-compat","deviceId":"smoke-device-compat","certificateProfile":"quantum-bank-mobile-client-v1"}' \
+  "${bootstrap_url}/auth/otk"
+compat_otk="$(sed -n 's/.*"otk":"\([^"]*\)".*/\1/p' "${body_file}")"
+[ -n "${compat_otk}" ] || fail "could not extract compat otk"
+compat_csr_json="$(json_escape_file "${compat_enroll_csr}")"
+printf '{"otk":"%s","csr":"%s","appInstanceId":"smoke-app-compat","deviceId":"smoke-device-compat","certificateProfile":"quantum-bank-mobile-client-v1","environment":"local"}' \
+  "${compat_otk}" "${compat_csr_json}" > /tmp/quantum-bank-smoke-csr-compat.json
+expect_http_status 202 \
+  --cacert "${trust_anchor}" \
+  -H "Authorization: Bearer ${token}" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/quantum-bank-smoke-csr-compat.json \
+  "${bootstrap_url}/auth/csr"
+expect_body_contains '"certificate":"-----BEGIN CERTIFICATE-----'
+expect_body_contains '"certificateChain"'
 expect_body_not_contains 'PRIVATE KEY'
 
 # Replaying the same OTK must fail closed.

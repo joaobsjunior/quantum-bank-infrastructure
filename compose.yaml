@@ -1,9 +1,15 @@
 name: quantum-bank-local
 
-# Post-quantum transport topology. Every socket that crosses a container or
-# host boundary is TLS 1.3 with ML-DSA authentication (PKI-issued ML-DSA-65
-# certificates under an ML-DSA-87 CA) and X25519MLKEM768 key exchange:
+# Transport topology. Every socket that crosses a container or host boundary
+# is TLS 1.3 authenticated by a PKI-issued certificate:
 #
+#   * strict hops (backend port, gateway egress, backend-client, JWKS fetches):
+#     ML-DSA-65 identities under the ML-DSA-87 CA and X25519MLKEM768 only;
+#   * app-facing listeners (issuer :8443, gateway :8080/:8443): dual identity,
+#     ML-DSA-65 for post-quantum clients and ECDSA P-256 (compatibility chain,
+#     ECDSA P-384 CA) for clients whose TLS stack cannot verify ML-DSA yet
+#     (the Dart/BoringSSL mobile transport, browsers); X25519MLKEM768
+#     preferred, X25519 accepted; RSA refused.
 #   * Keycloak and both KrakenD listeners cannot speak ML-DSA themselves (JDK 21
 #     JSSE and Go crypto/tls), so each one is paired with a HAProxy + OpenSSL 3.5
 #     terminator that shares its network namespace (`network_mode: service:`).
@@ -181,8 +187,11 @@ services:
       - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
 
   smoke-tests:
-    # curl 8.16 links OpenSSL 3.5, so the smoke client authenticates with the
-    # ML-DSA-65 mobile fixture over X25519MLKEM768 exactly like the app would.
+    # curl 8.16 links OpenSSL 3.5. It offers ECDSA schemes, so the app-facing
+    # listeners serve it the ECDSA compatibility identity (verified against the
+    # union of both root anchors) exactly like the Dart mobile transport sees
+    # them, over X25519MLKEM768; the client certificates it presents come from
+    # both chains (ML-DSA-65 and ECDSA P-256 mobile fixtures).
     image: curlimages/curl:8.16.0
     profiles:
       - smoke
@@ -201,10 +210,14 @@ services:
       GATEWAY_BOOTSTRAP_URL: https://gateway-bootstrap:8080
       GATEWAY_BANKING_URL: https://gateway-banking:8443
       BACKEND_DIRECT_URL: https://backend:8080
-      TRUST_ANCHOR: /etc/quantum-bank/runtime/root-ca.crt
+      TRUST_ANCHOR: /etc/quantum-bank/runtime/trust-anchors.crt
+      BACKEND_TRUST_ANCHOR: /etc/quantum-bank/runtime/root-ca.crt
       MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client.crt
       MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client.key
+      COMPAT_MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client-compat.crt
+      COMPAT_MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client-compat.key
       MOBILE_ENROLL_CSR: /etc/quantum-bank/runtime/mobile-smoke-enroll.csr
+      COMPAT_MOBILE_ENROLL_CSR: /etc/quantum-bank/runtime/mobile-smoke-enroll-compat.csr
     volumes:
       - ./scripts/local-e2e-smoke.sh:/scripts/local-e2e-smoke.sh:ro
       - ../pki/local-ca/runtime:/etc/quantum-bank/runtime:ro
@@ -225,12 +238,16 @@ services:
       BANKING_URL: https://gateway-banking:8443/statements
       BOOTSTRAP_URL: https://gateway-bootstrap:8080/auth/otk
       BACKEND_URL: https://backend:8080/statements
-      GATEWAY_CA_CERT: /etc/quantum-bank/runtime/root-ca.crt
+      GATEWAY_CA_CERT: /etc/quantum-bank/runtime/trust-anchors.crt
       BACKEND_CA_CERT: /etc/quantum-bank/runtime/root-ca.crt
       MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client.crt
       MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client.key
+      COMPAT_MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client-compat.crt
+      COMPAT_MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client-compat.key
       UNTRUSTED_CLIENT_CERT: /etc/quantum-bank/negative/untrusted-client.crt
       UNTRUSTED_CLIENT_KEY: /etc/quantum-bank/negative/untrusted-client.key
+      UNTRUSTED_COMPAT_CLIENT_CERT: /etc/quantum-bank/negative/untrusted-compat-client.crt
+      UNTRUSTED_COMPAT_CLIENT_KEY: /etc/quantum-bank/negative/untrusted-compat-client.key
       EXPIRED_CLIENT_CERT: /etc/quantum-bank/negative/expired-client.crt
       EXPIRED_CLIENT_KEY: /etc/quantum-bank/negative/expired-client.key
       CLASSICAL_CLIENT_CERT: /etc/quantum-bank/negative/classical-client.crt
@@ -248,7 +265,10 @@ services:
 
   pqc-handshake-tests:
     # Handshake evidence: proves TLS 1.3 + X25519MLKEM768 + ML-DSA peer
-    # signatures on every hop and that classical-only clients are refused.
+    # signatures for post-quantum clients on every hop, the ECDSA
+    # compatibility identity for compatibility clients on the app-facing
+    # listeners, and that RSA (everywhere) and classical-only clients (strict
+    # backend hop) are refused.
     image: ${PQC_OPENSSL_IMAGE:-alpine/openssl:3.5.8}
     profiles:
       - smoke
@@ -260,12 +280,15 @@ services:
       - backend
     environment:
       TRUST_ANCHOR: /etc/quantum-bank/runtime/root-ca.crt
+      COMPAT_TRUST_ANCHOR: /etc/quantum-bank/runtime/root-ca-compat.crt
       ISSUER_TLS_ENDPOINT: keycloak:8443
       BOOTSTRAP_TLS_ENDPOINT: gateway-bootstrap:8080
       BANKING_TLS_ENDPOINT: gateway-banking:8443
       BACKEND_TLS_ENDPOINT: backend:8080
       MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client.crt
       MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client.key
+      COMPAT_MOBILE_CLIENT_CERT: /etc/quantum-bank/runtime/mobile-smoke-client-compat.crt
+      COMPAT_MOBILE_CLIENT_KEY: /etc/quantum-bank/runtime/mobile-smoke-client-compat.key
       GATEWAY_CLIENT_CERT: /etc/quantum-bank/runtime/gateway-client.crt
       GATEWAY_CLIENT_KEY: /etc/quantum-bank/runtime/gateway-client.key
     volumes:

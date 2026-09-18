@@ -19,11 +19,11 @@ output "services" {
 }
 
 output "tls_terminators" {
-  description = "Post-quantum TLS terminator sidecar descriptors keyed by the internet-facing service they front."
+  description = "TLS terminator sidecar descriptors (post-quantum first, compatibility chain on the app edge) keyed by the internet-facing service they front."
   value       = local.tls_terminators
 }
 
 output "pqc_transport" {
-  description = "Post-quantum TLS policy every network hop must satisfy."
+  description = "TLS policy every network hop must satisfy (strict values for service hops, compat_* values additionally accepted on app-facing listeners)."
   value       = var.pqc_transport
 }
