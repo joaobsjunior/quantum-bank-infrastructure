@@ -53,12 +53,18 @@ before starting Compose:
 
 ```sh
 ../pki/scripts/bootstrap-runtime-certs.sh
-docker compose --env-file .env.example build
-docker compose --env-file .env.example up -d keycloak backend gateway-bootstrap gateway-banking
-docker compose --env-file .env.example --profile smoke run --rm smoke-tests
-docker compose --env-file .env.example --profile smoke run --rm negative-mtls-tests
-docker compose --env-file .env.example --profile smoke run --rm pqc-handshake-tests
+cp .env.example .env   # replace every change-me-local-only value and set PKI_GID
+docker compose --env-file .env build
+docker compose --env-file .env up -d
+docker compose --env-file .env --profile smoke run --rm smoke-tests
+docker compose --env-file .env --profile smoke run --rm negative-mtls-tests
+docker compose --env-file .env --profile smoke run --rm pqc-handshake-tests
 ```
+
+`up -d` without a service list starts every runtime service, including the
+`*-tls` HAProxy terminators (the smoke containers sit behind the `smoke`
+profile). See the root README for generating the secrets, `PKI_GID` on
+macOS/Linux and changing host ports that are already in use.
 
 The backend is reachable only inside the Compose network. App-facing traffic
 uses KrakenD bootstrap on `8080` and banking on `8443`; banking routes require
